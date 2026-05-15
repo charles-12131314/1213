@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 
 const SYSTEM_PROMPT = `你是一位顶级的职业规划顾问和招聘分析专家，拥有丰富的HR经验。请对用户提供的招聘职位描述进行深度分析。
 
@@ -84,7 +84,7 @@ function StarBar({ value }) {
   return (
     <div style={{ display: "flex", gap: 3 }}>
       {[1,2,3,4,5].map(i => (
-        <div key={i} style={{ width: 9, height: 9, borderRadius: 2, background: i <= value ? dc.text : "var(--border-md)" }} />
+        <div key={i} style={{ width: 9, height: 9, borderRadius: 2, background: i <= value ? dc.text : "var(--border)" }} />
       ))}
     </div>
   );
@@ -101,8 +101,8 @@ export default function App() {
 
   function saveKey() {
     const k = keyInput.trim();
-    if (!k.startsWith("sk-ant-")) {
-      setError("API Key 格式不正确，应以 sk-ant- 开头");
+    if (k.length < 10) {
+      setError("API Key 格式不正确，请检查后重试");
       return;
     }
     localStorage.setItem("jd_apikey", k);
@@ -120,31 +120,29 @@ export default function App() {
     setResult(null);
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 4096,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content: `请分析以下招聘职位：\n\n${jobText}` }],
-        }),
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ parts: [{ text: `请分析以下招聘职位：\n\n${jobText}` }] }],
+            generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
+          }),
+        }
+      );
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        if (response.status === 401) throw new Error("API Key 无效，请重新设置");
+        if (response.status === 400) throw new Error("API Key 无效，请检查后重新设置");
+        if (response.status === 403) throw new Error("API Key 权限不足或已禁用");
         if (response.status === 429) throw new Error("请求过于频繁，请稍后再试");
         throw new Error(err?.error?.message || `请求失败 (${response.status})`);
       }
 
       const data = await response.json();
-      const text = data.content?.map(b => b.text || "").join("") || "";
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const start = clean.indexOf("{");
       const end = clean.lastIndexOf("}");
@@ -162,7 +160,6 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      {/* Top nav */}
       <header style={{
         background: "var(--surface)", borderBottom: "0.5px solid var(--border)",
         padding: "0 24px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -183,39 +180,29 @@ export default function App() {
           }}
         >
           <i className={`ti ti-${apiKey ? "key" : "key-off"}`} style={{ fontSize: 14 }} />
-          {apiKey ? "API Key 已设置" : "设置 API Key"}
+          {apiKey ? "Gemini Key 已设置" : "设置 Gemini API Key"}
         </button>
       </header>
 
-      {/* API Key panel */}
       {showKeyPanel && (
-        <div style={{
-          background: "var(--surface)", borderBottom: "0.5px solid var(--border)",
-          padding: "16px 24px",
-        }}>
+        <div style={{ background: "var(--surface)", borderBottom: "0.5px solid var(--border)", padding: "16px 24px" }}>
           <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 10 }}>
-            请前往 <a href="https://console.anthropic.com/keys" target="_blank" rel="noreferrer" style={{ color: "#185FA5" }}>console.anthropic.com</a> 创建 API Key，粘贴到下方（Key 仅保存在本地浏览器中）：
+            前往 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: "#185FA5" }}>Google AI Studio</a> 创建 API Key，粘贴到下方（仅保存在本地浏览器）：
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               type="password"
               value={keyInput}
               onChange={e => setKeyInput(e.target.value)}
-              placeholder="sk-ant-api03-..."
+              placeholder="AIzaSy..."
               style={{
                 flex: 1, padding: "8px 12px", fontSize: 14, borderRadius: 8,
-                border: "0.5px solid var(--border-md)", background: "var(--bg)",
+                border: "0.5px solid var(--border)", background: "var(--bg)",
                 color: "var(--text)", fontFamily: "monospace", outline: "none",
               }}
             />
-            <button onClick={saveKey} style={{
-              padding: "8px 20px", borderRadius: 8, fontSize: 14, fontWeight: 500,
-              background: "#185FA5", color: "#fff", border: "none", cursor: "pointer",
-            }}>保存</button>
-            <button onClick={() => setShowKeyPanel(false)} style={{
-              padding: "8px 16px", borderRadius: 8, fontSize: 14,
-              background: "var(--surface2)", color: "var(--text2)", border: "0.5px solid var(--border)", cursor: "pointer",
-            }}>取消</button>
+            <button onClick={saveKey} style={{ padding: "8px 20px", borderRadius: 8, fontSize: 14, fontWeight: 500, background: "#185FA5", color: "#fff", border: "none", cursor: "pointer" }}>保存</button>
+            <button onClick={() => setShowKeyPanel(false)} style={{ padding: "8px 16px", borderRadius: 8, fontSize: 14, background: "var(--surface2)", color: "var(--text2)", border: "0.5px solid var(--border)", cursor: "pointer" }}>取消</button>
           </div>
           {apiKey && (
             <button onClick={() => { localStorage.removeItem("jd_apikey"); setApiKey(""); setShowKeyPanel(false); }}
@@ -226,22 +213,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Main content */}
       <main style={{ maxWidth: 760, margin: "0 auto", padding: "32px 24px" }}>
-        {/* Input */}
-        <div style={{
-          background: "var(--surface)", border: "0.5px solid var(--border-md)",
-          borderRadius: "var(--radius)", padding: "1rem 1.25rem", marginBottom: 16,
-        }}>
+        <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: "var(--radius)", padding: "1rem 1.25rem", marginBottom: 16 }}>
           <textarea
             value={jobText}
             onChange={e => setJobText(e.target.value)}
             placeholder={"粘贴招聘职位描述（JD）到这里...\n\n支持中英文，包含职位名称、岗位职责、任职要求等内容，信息越完整分析越准确。"}
-            style={{
-              width: "100%", minHeight: 160, resize: "vertical", border: "none",
-              outline: "none", background: "transparent", fontSize: 14,
-              color: "var(--text)", lineHeight: 1.7, fontFamily: "inherit",
-            }}
+            style={{ width: "100%", minHeight: 160, resize: "vertical", border: "none", outline: "none", background: "transparent", fontSize: 14, color: "var(--text)", lineHeight: 1.7, fontFamily: "inherit" }}
           />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 8, borderTop: "0.5px solid var(--border)" }}>
             <span style={{ fontSize: 12, color: "var(--text3)" }}>
@@ -263,27 +241,23 @@ export default function App() {
                   color: loading || !jobText.trim() ? "var(--text3)" : "#fff",
                   border: "none", borderRadius: 8, padding: "7px 20px",
                   cursor: loading || !jobText.trim() ? "not-allowed" : "pointer",
-                  transition: "background 0.15s",
                 }}
               >
-                {loading ? (
-                  <><i className="ti ti-loader" style={{ fontSize: 15, animation: "spin 1s linear infinite" }} /> 分析中...</>
-                ) : (
-                  <><i className="ti ti-sparkles" style={{ fontSize: 15 }} /> 开始分析</>
-                )}
+                {loading
+                  ? <><i className="ti ti-loader" style={{ fontSize: 15, animation: "spin 1s linear infinite" }} /> 分析中...</>
+                  : <><i className="ti ti-sparkles" style={{ fontSize: 15 }} /> 开始分析</>
+                }
               </button>
             </div>
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <div style={{ background: "#FCEBEB", border: "0.5px solid #F09595", borderRadius: 8, padding: "10px 14px", color: "#A32D2D", fontSize: 14, marginBottom: 16 }}>
             <i className="ti ti-alert-circle" style={{ fontSize: 15, marginRight: 6 }} />{error}
           </div>
         )}
 
-        {/* Loading skeleton */}
         {loading && (
           <div style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "2.5rem", textAlign: "center", border: "0.5px solid var(--border)" }}>
             <i className="ti ti-brain" style={{ fontSize: 32, color: "var(--text3)", marginBottom: 12, display: "block" }} />
@@ -292,10 +266,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Results */}
         {result && (
           <div>
-            {/* Header card */}
             <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: "var(--radius)", padding: "1.25rem", marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -320,14 +292,13 @@ export default function App() {
                 </div>
               </div>
               {result.summary && (
-                <p style={{ marginTop: 14, marginBottom: 0, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, fontSize: 14, color: "var(--text)", lineHeight: 1.7, borderLeft: "3px solid var(--border-md)" }}>
+                <p style={{ marginTop: 14, marginBottom: 0, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, fontSize: 14, color: "var(--text)", lineHeight: 1.7, borderLeft: "3px solid var(--border)" }}>
                   {result.summary}
                 </p>
               )}
             </div>
 
-            {/* Skills grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {result.hardSkills?.length > 0 && (
                 <Section icon="code" title="必备技能">
                   <div>{result.hardSkills.map((s, i) => <Tag key={i} color="blue">{s}</Tag>)}</div>
@@ -345,31 +316,26 @@ export default function App() {
                 <div>{result.niceToHaves.map((s, i) => <Tag key={i} color="teal">{s}</Tag>)}</div>
               </Section>
             )}
-
             {result.cultureSignals?.length > 0 && (
               <Section icon="users" title="企业文化信号">
                 <BulletList items={result.cultureSignals} dotColor="#7F77DD" />
               </Section>
             )}
-
             {result.redFlags?.length > 0 && (
               <Section icon="alert-triangle" title="潜在风险提示">
                 <BulletList items={result.redFlags} dotColor="#EF9F27" />
               </Section>
             )}
-
             {result.interviewTopics?.length > 0 && (
               <Section icon="school" title="面试高频考点">
                 <div>{result.interviewTopics.map((t, i) => <Tag key={i} color="amber">{t}</Tag>)}</div>
               </Section>
             )}
-
             {result.resumeTips?.length > 0 && (
               <Section icon="file-text" title="简历优化建议">
                 <BulletList items={result.resumeTips} dotColor="#1D9E75" />
               </Section>
             )}
-
             {result.fitScore && (
               <div style={{ background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: "var(--radius)", padding: "1rem 1.25rem", display: "flex", alignItems: "flex-start", gap: 12 }}>
                 <i className="ti ti-target" style={{ fontSize: 18, color: "var(--text2)", marginTop: 2, flexShrink: 0 }} />
@@ -380,7 +346,7 @@ export default function App() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 20, flexWrap: "wrap" }}>
+            <div style={{ marginTop: 20 }}>
               <button onClick={() => { setResult(null); setJobText(""); }} style={{
                 display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 500,
                 background: "var(--surface2)", color: "var(--text2)", border: "0.5px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer",
@@ -393,7 +359,7 @@ export default function App() {
 
         {!result && !loading && (
           <p style={{ textAlign: "center", color: "var(--text3)", fontSize: 13, marginTop: 40 }}>
-            粘贴任意招聘 JD，AI 将为你深度解析岗位要求、竞争难度及求职策略
+            粘贴任意招聘 JD，由 Gemini AI 深度解析岗位要求、竞争难度及求职策略
           </p>
         )}
       </main>
@@ -402,7 +368,6 @@ export default function App() {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         button { font-family: inherit; }
         input { font-family: inherit; }
-        a:hover { opacity: 0.8; }
       `}</style>
     </div>
   );
