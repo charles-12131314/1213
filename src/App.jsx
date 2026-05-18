@@ -32,7 +32,6 @@ const TAG_COLORS = {
   blue:   { bg: "#E6F1FB", text: "#185FA5" },
   green:  { bg: "#EAF3DE", text: "#3B6D11" },
   amber:  { bg: "#FAEEDA", text: "#854F0B" },
-  red:    { bg: "#FCEBEB", text: "#A32D2D" },
   purple: { bg: "#EEEDFE", text: "#534AB7" },
   teal:   { bg: "#E1F5EE", text: "#0F6E56" },
   gray:   { bg: "#F1EFE8", text: "#5F5E5A" },
@@ -120,29 +119,33 @@ export default function App() {
     setResult(null);
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents: [{ parts: [{ text: `请分析以下招聘职位：\n\n${jobText}` }] }],
-            generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
-          }),
-        }
-      );
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          max_tokens: 4096,
+          temperature: 0.3,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: `请分析以下招聘职位：\n\n${jobText}` },
+          ],
+        }),
+      });
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        if (response.status === 400) throw new Error("API Key 无效，请检查后重新设置");
-        if (response.status === 403) throw new Error("API Key 权限不足或已禁用");
+        if (response.status === 401) throw new Error("API Key 无效，请重新设置");
+        if (response.status === 402) throw new Error("账户余额不足，请前往 DeepSeek 平台充值");
         if (response.status === 429) throw new Error("请求过于频繁，请稍后再试");
         throw new Error(err?.error?.message || `请求失败 (${response.status})`);
       }
 
       const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = data.choices?.[0]?.message?.content || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const start = clean.indexOf("{");
       const end = clean.lastIndexOf("}");
@@ -180,21 +183,22 @@ export default function App() {
           }}
         >
           <i className={`ti ti-${apiKey ? "key" : "key-off"}`} style={{ fontSize: 14 }} />
-          {apiKey ? "Gemini Key 已设置" : "设置 Gemini API Key"}
+          {apiKey ? "DeepSeek Key 已设置" : "设置 DeepSeek API Key"}
         </button>
       </header>
 
       {showKeyPanel && (
         <div style={{ background: "var(--surface)", borderBottom: "0.5px solid var(--border)", padding: "16px 24px" }}>
           <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 10 }}>
-            前往 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: "#185FA5" }}>Google AI Studio</a> 创建 API Key，粘贴到下方（仅保存在本地浏览器）：
+            前往 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer" style={{ color: "#185FA5" }}>DeepSeek 开放平台</a> 创建 API Key，粘贴到下方（仅保存在本地浏览器，不会上传）：
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               type="password"
               value={keyInput}
               onChange={e => setKeyInput(e.target.value)}
-              placeholder="AIzaSy..."
+              onKeyDown={e => e.key === "Enter" && saveKey()}
+              placeholder="sk-..."
               style={{
                 flex: 1, padding: "8px 12px", fontSize: 14, borderRadius: 8,
                 border: "0.5px solid var(--border)", background: "var(--bg)",
@@ -210,6 +214,7 @@ export default function App() {
               清除已保存的 Key
             </button>
           )}
+          {error && <p style={{ marginTop: 8, fontSize: 13, color: "#A32D2D" }}>{error}</p>}
         </div>
       )}
 
@@ -252,7 +257,7 @@ export default function App() {
           </div>
         </div>
 
-        {error && (
+        {error && !showKeyPanel && (
           <div style={{ background: "#FCEBEB", border: "0.5px solid #F09595", borderRadius: 8, padding: "10px 14px", color: "#A32D2D", fontSize: 14, marginBottom: 16 }}>
             <i className="ti ti-alert-circle" style={{ fontSize: 15, marginRight: 6 }} />{error}
           </div>
@@ -359,7 +364,7 @@ export default function App() {
 
         {!result && !loading && (
           <p style={{ textAlign: "center", color: "var(--text3)", fontSize: 13, marginTop: 40 }}>
-            粘贴任意招聘 JD，由 Gemini AI 深度解析岗位要求、竞争难度及求职策略
+            粘贴任意招聘 JD，由 DeepSeek AI 深度解析岗位要求、竞争难度及求职策略
           </p>
         )}
       </main>
